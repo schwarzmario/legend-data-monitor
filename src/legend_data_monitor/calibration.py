@@ -333,7 +333,12 @@ def check_psd(
             break
     if found is False:
         utils.logger.debug(f"No valid folder {cal_path} found. Exiting.")
-        exit()
+        return 
+
+    cal_runs = os.listdir(cal_path)
+    if len(cal_runs) <= 1:
+        utils.logger.debug(f"Either no available calibration runs to inspect or one only. Exiting.")
+        return 
 
     pars_files_list = sorted(glob.glob(f"{cal_path}/*/*.yaml"))
     if not pars_files_list:
