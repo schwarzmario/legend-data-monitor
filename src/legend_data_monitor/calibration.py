@@ -152,9 +152,9 @@ def evaluate_psd_performance(
     return results
 
 
-def update_psd_evaluation_in_memory(data: dict, det_name: str, value: bool | float):
-    """Update the PSD entry in memory dict, where value can be bool or nan if not available."""
-    data.setdefault(det_name, {}).setdefault("cal", {})["PSD"] = value
+def update_psd_evaluation_in_memory(data: dict, det_name: str, data: str, key: str, value: bool | float):
+    """Update the key entry in memory dict, where value can be bool or nan if not available; data is either 'cal' or 'phy'."""
+    data.setdefault(det_name, {}).setdefault(data, {})[key] = value
 
 
 def evaluate_psd_usability_and_plot(
@@ -318,7 +318,7 @@ def evaluate_psd_usability_and_plot(
     plt.close()
 
     # supdate psd status
-    update_psd_evaluation_in_memory(psd_data, det_name, eval_result["status"])
+    update_psd_evaluation_in_memory(psd_data, det_name, 'cal', 'PSD', eval_result["status"])
 
 
 def check_psd(
@@ -335,9 +335,25 @@ def check_psd(
         utils.logger.debug(f"No valid folder {cal_path} found. Exiting.")
         return 
 
+    # create the folder and parents if missing - for the moment, we store it under the 'phy' folder
+    output_dir = os.path.join(output_dir, period, current_run)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Load existing data once (or start empty)
+    usability_map_file = os.path.join(
+        output_dir, f"l200-{period}-{current_run}-summary.yaml"
+    )
+
+    if os.path.exists(usability_map_file):
+        with open(usability_map_file) as f:
+            psd_data = yaml.safe_load(f) or {}
+    else:
+        psd_data = {}
+
+    # don't run any check if there are no runs
     cal_runs = os.listdir(cal_path)
-    if len(cal_runs) <= 1:
-        utils.logger.debug(f"Either no available calibration runs to inspect or one only. Exiting.")
+    if len(cal_runs) == 0:
+        utils.logger.debug(f"No available calibration runs to inspect. Exiting.")
         return 
 
     pars_files_list = sorted(glob.glob(f"{cal_path}/*/*.yaml"))
@@ -358,6 +374,12 @@ def check_psd(
         for det in detectors_name
         if chmap[det]["name"] == det
     ]
+    
+    if len(cal_runs) == 1:
+        utils.logger.debug(f"Only one available calibration run. Save all entries as None and exit.")
+        for idx, det_name in enumerate(detectors_name):
+            update_psd_evaluation_in_memory(psd_data, det_name, 'cal', 'PSD', None)
+        return 
 
     # retrieve all dets info
     cal_runs = sorted(os.listdir(cal_path))
@@ -367,21 +389,6 @@ def check_psd(
     if cal_psd_info is None:
         utils.logger.debug("...no data are available at the moment")
         return
-
-    # create the folder and parents if missing - for the moment, we store it under the 'phy' folder
-    output_dir = os.path.join(output_dir, period, current_run)
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Load existing data once (or start empty)
-    usability_map_file = os.path.join(
-        output_dir, f"l200-{period}-{current_run}-summary.yaml"
-    )
-
-    if os.path.exists(usability_map_file):
-        with open(usability_map_file) as f:
-            psd_data = yaml.safe_load(f) or {}
-    else:
-        psd_data = {}
 
     # inspect one single det: plot+saving
     for idx, det_name in enumerate(detectors_name):
