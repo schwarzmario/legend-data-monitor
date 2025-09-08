@@ -8,6 +8,7 @@ import smtplib
 import sys
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
+from collections import defaultdict
 from email.mime.text import MIMEText
 
 import h5py
@@ -17,6 +18,8 @@ import yaml
 from legendmeta import JsonDB
 from lgdo import lh5
 from pandas import DataFrame
+
+from legendmeta import LegendMetadata
 
 # -------------------------------------------------------------------------
 
@@ -1717,3 +1720,58 @@ def deep_get(d, keys, default=None):
 def none_to_nan(data: list):
     """Convert None elements into nan values for an input list."""
     return [np.nan if v is None else v for v in data]
+
+
+def build_detector_info(metadata_path, start_key=None):
+    """
+    Build detector information from LEGEND metadata.
+
+    Parameters
+    ----------
+    metadata_path : str
+        Path to the metadata file.
+    start_key : optional
+        Starting key for channelmap selection.
+
+    Returns
+    -------
+    dict
+        Dictionary with two main entries:
+        - "detectors": mapping from detector name to different infos
+            - daq_rawid : int
+            - channel_str : str (e.g. "ch1234")
+            - string : int
+            - position : int
+            - processable : bool
+        - "str_chns": mapping from string to a list of detector names
+    """
+    lmeta = LegendMetadata(metadata_path)
+    chmap = lmeta.channelmap(start_key) if start_key else lmeta.channelmap()
+
+    detectors = {}
+    str_chns = defaultdict(list)
+
+    for det, info in chmap.items():
+        if info["system"] != "geds" or info["name"] != det:
+            continue
+
+        rawid = info["daq"]["rawid"]
+        ch_str = f"ch{rawid}"
+        string = int(info["location"]["string"])
+        position = info["location"]["position"]
+        processable = info.get("analysis", {}).get("processable", False)
+
+        # store detector info
+        detectors[det] = {
+            "daq_rawid": rawid,
+            "channel_str": ch_str,
+            "string": string,
+            "position": position,
+            "processable": processable,
+        }
+
+        # fill string 
+        if processable:
+            str_chns[string].append(det)
+
+    return {"detectors": detectors, "str_chns": dict(str_chns)}

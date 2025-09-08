@@ -7,7 +7,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
-from legendmeta import LegendMetadata
 
 from . import utils
 
@@ -152,9 +151,9 @@ def evaluate_psd_performance(
     return results
 
 
-def update_psd_evaluation_in_memory(data: dict, det_name: str, data: str, key: str, value: bool | float):
-    """Update the key entry in memory dict, where value can be bool or nan if not available; data is either 'cal' or 'phy'."""
-    data.setdefault(det_name, {}).setdefault(data, {})[key] = value
+def update_psd_evaluation_in_memory(data: dict, det_name: str, data_type: str, key: str, value: bool | float):
+    """Update the key entry in memory dict, where value can be bool or nan if not available; data_type is either 'cal' or 'phy'."""
+    data.setdefault(det_name, {}).setdefault(data_type, {})[key] = value
 
 
 def evaluate_psd_usability_and_plot(
@@ -341,7 +340,7 @@ def check_psd(
 
     # Load existing data once (or start empty)
     usability_map_file = os.path.join(
-        output_dir, f"l200-{period}-{current_run}-summary.yaml"
+        output_dir, f"l200-{period}-{current_run}-qcp_summary.yaml"
     )
 
     if os.path.exists(usability_map_file):
@@ -360,20 +359,11 @@ def check_psd(
     if not pars_files_list:
         pars_files_list = sorted(glob.glob(f"{cal_path}/*/*.json"))
 
-    metadata_path = os.path.join(auto_dir_path, "inputs")
-    lmeta = LegendMetadata(metadata_path)
-    chmap = lmeta.channelmap()
-    detectors_name = [det for det, info in chmap.items() if info["system"] == "geds"]
-    detectors_list = [
-        f"ch{chmap[det]['daq']['rawid']}"
-        for det in detectors_name
-        if chmap[det]["name"] == det
-    ]
-    locations_list = [
-        (chmap[det]["location"]["position"], chmap[det]["location"]["string"])
-        for det in detectors_name
-        if chmap[det]["name"] == det
-    ]
+    start_key = pars_files_list[1].split('-')[-2]
+    det_info = utils.build_detector_info(os.path.join(auto_dir_path, "inputs"), start_key=start_key)
+    detectors_name = list(det_info["detectors"].keys())
+    detectors_list = [det_info["detectors"][d]["channel_str"] for d in detectors_name]
+    locations_list = [(det_info["detectors"][d]["position"], det_info["detectors"][d]["string"]) for d in detectors_name]
     
     if len(cal_runs) == 1:
         utils.logger.debug(f"Only one available calibration run. Save all entries as None and exit.")
