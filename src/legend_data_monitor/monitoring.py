@@ -808,7 +808,7 @@ def get_pulser_data(
         pul_cusp_hr_std
     ) = None
     ged_cusp_corr = ged_cusp_corr_kev = ged_cusp_cor_hr_av_ = ged_cusp_cor_hr_std = None
-    # ...if pulser iis available:
+    # ...if pulser is available:
     if not dfs[2].empty:
         ser_pul_cusp = dfs[2][1027203].sort_index()
         ser_pul_cusp = filter_by_period(ser_pul_cusp, period)
@@ -1308,7 +1308,6 @@ def plot_time_series(
                     #  - p08_string1_pos1_V02160A_param
                     #  - p08_string1_pos2_V02160B_param
                     #  - ...
-                    
 
     # parameters (bsln, gain, ...) variations over run
     ylabels = {
@@ -1468,7 +1467,7 @@ def plot_time_series(
                                 plt.fill_between(x, diff_av - diff_std, diff_av + diff_std, color="k", alpha=0.2, label=r"±1$\sigma$")
                             # else, no correction is applied
                             else:
-                                if percentage[inspected_parameter] is True:
+                                if percentage[inspected_parameter] is True and escale_val == 1.0:
                                     pulser_data["ged"]["kevdiff_av"] *= 100
                                     pulser_data["ged"]["kevdiff_std"] *= 100
                                     
