@@ -305,7 +305,7 @@ def evaluate_psd_usability_and_plot(
     with shelve.open(
         os.path.join(
             output_dir,
-            f"l200-{period}-phy-monitoring",
+            f"l200-{period}-cal-monitoring",
         ),
         "c",
         protocol=pickle.HIGHEST_PROTOCOL,
@@ -359,7 +359,7 @@ def check_psd(
     if not pars_files_list:
         pars_files_list = sorted(glob.glob(f"{cal_path}/*/*.json"))
 
-    start_key = pars_files_list[1].split('-')[-2]
+    start_key = pars_files_list[0].split('-')[-2]
     det_info = utils.build_detector_info(os.path.join(auto_dir_path, "inputs"), start_key=start_key)
     detectors_name = list(det_info["detectors"].keys())
     detectors_list = [det_info["detectors"][d]["channel_str"] for d in detectors_name]
@@ -367,8 +367,12 @@ def check_psd(
     
     if len(cal_runs) == 1:
         utils.logger.debug(f"Only one available calibration run. Save all entries as None and exit.")
-        for idx, det_name in enumerate(detectors_name):
+        for det_name in detectors_name:
             update_psd_evaluation_in_memory(psd_data, det_name, 'cal', 'PSD', None)
+        
+        with open(usability_map_file, "w") as f:
+            yaml.dump(psd_data, f, sort_keys=False)
+        
         return 
 
     # retrieve all dets info
