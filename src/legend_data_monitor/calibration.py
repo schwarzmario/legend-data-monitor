@@ -289,6 +289,8 @@ def evaluate_psd_usability_and_plot(
 
     fig.suptitle(det_name, fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    output_dir = os.path.join(output_dir, "mtg")
     if save_pdf:
         pdf_folder = os.path.join(output_dir, "pdf", f"st{location[0]}")
         os.makedirs(pdf_folder, exist_ok=True)

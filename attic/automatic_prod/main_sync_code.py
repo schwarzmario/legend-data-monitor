@@ -477,7 +477,6 @@ def main():
         logger.info(f"Folder {mtg_folder} ensured")
 
         # define dataset depending on the (latest) monitored period/run
-
         avail_runs = sorted(os.listdir(os.path.join(mtg_folder, period)))
         avail_runs = [
             ar for ar in avail_runs if "mtg" not in ar and ar != ".ipynb_checkpoints"
@@ -491,8 +490,7 @@ def main():
                     os.listdir(os.path.join(search_directory, period, avail_runs[0]))
                 )[0]
             ).split("-")[4]
-
-            mtg_bash_command = f"{cmd} python monitoring.py plot --public_data {auto_dir_path} --hdf_files {mtg_folder} --output {mtg_folder} --start {start_key} --p {period} --avail_runs {avail_runs} --pswd_email {pswd_email} --escale {escale_val} --current_run {run} --last_checked {last_checked}"
+            mtg_bash_command = f"{cmd} python monitoring.py plot --public_data {auto_dir_path} --hdf_files {mtg_folder} --output {mtg_folder} --start_key {start_key} --p {period} --avail_runs {avail_runs} --pswd_email {pswd_email} --escale {escale_val} --current_run {run} --last_checked {last_checked}"
             if partition is True:
                 mtg_bash_command += " --partition True"
             if save_pdf is True:
@@ -501,6 +499,14 @@ def main():
             logger.debug(f"...running command {mtg_bash_command}")
             subprocess.run(mtg_bash_command, shell=True)
             logger.info("...monitoring plots generated!")
+
+            # QC - average + time series
+            qc_bash_command = f"{cmd} python monitoring.py qc_avg_series --public_data {auto_dir_path} --output {mtg_folder} --start_key {start_key} --p {period} --current_run {run}"
+            if save_pdf is True:
+                qc_bash_command += " --pdf True"
+            logger.debug(f"...running command {qc_bash_command}")
+            subprocess.run(qc_bash_command, shell=True)
+            logger.info("...quality cuts inspected!")
 
         # ===========================================================================================
         # Calibration checks

@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytz
+import itertools
 import yaml
 from legendmeta import LegendMetadata
 from lgdo import lh5
@@ -40,6 +41,223 @@ CALIB_RUNS = utils.CALIB_RUNS
 
 # -------------------------------------------------------------------------
 
+def qc_average(auto_dir_path: str, output_folder: str, det_info: dict, period: str, run: str, save_pdf: bool, pars_to_inspect: list =['IsHighlyPositivePolarityCandidate', 'IsValidBlSlope', 'IsValidBlSlopeRms', 'IsValidTailRms', 'IsNotNoiseBurst', 'IsValidCuspemin', 'IsValidCuspemax', 'IsValidTrapTpmax', 'IsLowCuspemax', 'IsDischarge', 'IsSaturated']):
+    """
+    Evaluate the average rate of passing quality cuts for a given run and period across the whole array for different QC flags.
+
+    Parameters
+    ----------
+    auto_dir_path : str
+        Path to tmp-auto public data files (eg /data2/public/prodenv/prod-blind/tmp-auto).
+    output_folder : str
+        Path to generated monitoring hdf files.
+    det_info : dict
+        Dictionary with channel names, IDs, and mapping to string and position.
+    period : str
+        Period to inspect.
+    run : str
+        Run under inspection.
+    save_pdf : bool
+        True if you want to save pdf files too; default: False.
+    pars_to_inspect : list
+        List of parameters (boolean flags) to inspect.
+    """
+    my_file = os.path.join(output_folder, f'{period}/{run}/l200-{period}-{run}-phy-geds.hdf')
+    detectors = det_info["detectors"]
+    str_chns = det_info["str_chns"]
+    utils.logger.debug("...inspecting QC average values")
+
+    end_folder = os.path.join(
+        output_folder,
+        period,
+        run,
+        "mtg",
+        "QC",
+    )
+    os.makedirs(end_folder, exist_ok=True)
+    shelve_path = os.path.join(
+        end_folder,
+        f"l200-{period}-phy-QC",
+    )
+
+    with shelve.open(shelve_path, "c", protocol=pickle.HIGHEST_PROTOCOL) as shelf, pd.HDFStore(my_file, "r") as store:
+        for par in pars_to_inspect:
+            key = f"/IsPhysics_{par}"
+            if key not in store:
+                utils.logger.debug("...skipping %s (not found in HDF)", par)
+                continue
+
+            geds_df_abs = store[key]
+
+            # time span 
+            time_min, time_max = geds_df_abs.index.min(), geds_df_abs.index.max()
+            diff = (time_max - time_min).total_seconds()
+
+            # rates in mHz
+            rates = geds_df_abs.sum(axis=0) / diff * 1000
+
+            fig, ax = plt.subplots(figsize=(12, 4), sharex=True)
+            x_labels, xs, ys = [], [], []
+            string_indices = {}
+            ct = -1
+
+            for string, det_list in str_chns.items():
+                indices = []
+                
+                for det_name in det_list:
+                    det = detectors[det_name]
+                    rawid = det["daq_rawid"]
+
+                    ct += 1
+                    x_labels.append(det_name)
+                    indices.append(ct)
+                    if rawid not in rates:
+                        utils.logger.debug(
+                            f"{det_name} ({rawid}) missing in dataframe for {par}"
+                        )
+                        continue
+
+                    ys.append(rates[rawid])
+                    xs.append(ct)
+                    
+                string_indices[string] = indices
+
+            ax.scatter(xs, ys, color="dodgerblue", marker="o")
+            ax.set_title(f"period: {period} - run: {run} - passing {par}")
+            ax.set_ylabel(f"Average rate {par}=True (mHz)")
+            ax.set_yscale("log")
+            ax.set_xticks(range(len(x_labels)))
+            ax.set_xticklabels(x_labels, rotation=90)
+            ax.grid(False)
+                        
+            ymin, ymax = ax.get_ylim()
+            label_y = ymin * (ymax / ymin) ** 0.05  if ymin > 0 else 0.1 
+            for string, indices in string_indices.items():
+                left, right = min(indices), max(indices)
+                if string == 1: ax.axvline(left - 0.5, ls="--", color='k', alpha=0.5)
+                ax.axvline(right + 0.5, ls="--", color='k', alpha=0.5)
+                ax.text(
+                    left,
+                    label_y,
+                    f"String {string}",
+                    rotation=90,
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                )
+                
+            plt.tight_layout()
+            if save_pdf:
+                pdf_dir = os.path.join(end_folder, "pdf")
+                os.makedirs(pdf_dir, exist_ok=True)
+                pdf_name = os.path.join(pdf_dir, f"{period}_{par}_avg.pdf")
+                fig.savefig(pdf_name)
+
+            # serialize+save plot 
+            shelf[f"{period}_{par}_avg"] = pickle.dumps(fig)
+            plt.close(fig)
+
+
+            
+def qc_time_series(auto_dir_path: str, output_folder: str, det_info: dict, period: str, run: str, save_pdf: bool, pars_to_inspect: list =['IsHighlyPositivePolarityCandidate', 'IsValidBlSlope', 'IsValidBlSlopeRms', 'IsValidTailRms', 'IsNotNoiseBurst', 'IsValidCuspemin', 'IsValidCuspemax', 'IsValidTrapTpmax', 'IsLowCuspemax', 'IsDischarge', 'IsSaturated']):
+    """
+    Evaluate rate over time of passing quality cuts for a given run and period across the whole array for different QC flags.
+
+    Parameters
+    ----------
+    auto_dir_path : str
+        Path to tmp-auto public data files (eg /data2/public/prodenv/prod-blind/tmp-auto).
+    output_folder : str
+        Path to generated monitoring hdf files.
+    det_info : dict
+        Dictionary with channel names, IDs, and mapping to string and position.
+    period : str
+        Period to inspect.
+    run : str
+        Run under inspection.
+    save_pdf : bool
+        True if you want to save pdf files too; default: False.
+    pars_to_inspect : list
+        List of parameters (boolean flags) to inspect.
+    """
+    my_file = os.path.join(output_folder, f'{period}/{run}/l200-{period}-{run}-phy-geds.hdf')
+    detectors = det_info["detectors"]
+    str_chns = det_info["str_chns"]
+    utils.logger.debug("...inspecting QC time series")
+
+    end_folder = os.path.join(
+        output_folder,
+        period,
+        run,
+        "mtg",
+        "QC",
+    )
+    os.makedirs(end_folder, exist_ok=True)
+    shelve_path = os.path.join(
+        end_folder,
+        f"l200-{period}-phy-QC",
+    )
+
+    color_cycle = itertools.cycle(plt.cm.tab20.colors)
+
+    with shelve.open(shelve_path, "c", protocol=pickle.HIGHEST_PROTOCOL) as shelf, pd.HDFStore(my_file, "r") as store:
+        for par in pars_to_inspect:
+            key = f"/IsPhysics_{par}"
+            if key not in store:
+                utils.logger.debug("...skipping %s (not found in HDF)", par)
+                continue
+    
+            geds_df_abs = store[key]
+            
+            for string, channel_list in str_chns.items():
+                fig, ax = plt.subplots(figsize=(12, 4))
+                
+                for channel_name in channel_list:
+                    det = detectors[channel_name]
+                    rawid = det["daq_rawid"]
+                    pos = det["position"]
+
+                    if rawid not in geds_df_abs.columns:
+                        utils.logger.debug(
+                            f"{channel_name} ({rawid}) missing in dataframe for {par}"
+                        )
+                        continue
+                        
+                    data = geds_df_abs[rawid].copy()
+                    true_count = data.sum()
+                    tot_count = data.count()
+                    time_min, time_max = data.index.min(), data.index.max()
+                    diff = (time_max - time_min).total_seconds()
+
+                    true_rate_mHz = round(true_count / diff * 1000, 2)
+                    hourly_rate = data.resample("1H").sum() / 3600 * 1000
+                    
+                    color = next(color_cycle)
+                    hourly_rate.plot(
+                        ax=ax,
+                        drawstyle="steps-mid",
+                        label=f"{channel_name} - {true_rate_mHz} mHz",
+                        color=color,
+                    )
+                
+                ax.grid(False)
+                ax.set_ylabel(f'{period} {run} - 1h {par} rate (mHz)')
+                fig.suptitle(f'{period} {run} - String: {string}')
+                ax.legend(loc='bottom left')
+                plt.tight_layout()
+                
+                if save_pdf:
+                    pdf_dir = os.path.join(end_folder, "pdf", f"st{string}")
+                    os.makedirs(pdf_dir, exist_ok=True)
+                    pdf_name = os.path.join(pdf_dir, f"{period}_string{string}_{par}_rate.pdf")
+                    fig.savefig(pdf_name)
+
+                # serialize+save plot 
+                shelf[f"{period}_string{string}_{par}_rate"] = pickle.dumps(fig)
+                plt.close(fig)
+
+                
+    
 
 def get_energy_key(
     ecal_results: dict,
@@ -1037,7 +1255,7 @@ def plot_time_series(
     xlim_idx = 1
     fit_flag = "quadratic" if quadratic is True else "linear"
 
-    det_info = utils.build_detector_info(os.path.join(auto_dir_path, "inputs/"), start_key)
+    det_info = utils.build_detector_info(os.path.join(auto_dir_path, "inputs/"), start_key=start_key)
     detectors = det_info["detectors"]
     str_chns = det_info["str_chns"]
 
@@ -1297,7 +1515,7 @@ def plot_time_series(
                         )
                         plt.savefig(pdf_name)
     
-                    # pickle and save calibration inputs retrieved ots in a shelve file
+                    # serialize+save the plot
                     serialized_plot = pickle.dumps(plt.gcf())
                     shelf[
                         f'{period}_string{string}_pos{pos}_{channel_name}_gain_shift'
@@ -1561,9 +1779,8 @@ def plot_time_series(
                             )
                             plt.savefig(pdf_name)
     
-                        # serialize the plot
+                        # serialize+save the plot
                         serialized_plot = pickle.dumps(plt.gcf())
-                        # store the serialized plot in a shelve object under key
                         shelf[
                             f'{period}_string{string}_pos{pos}_{channel_name}_{inspected_parameter}'
                         ] = serialized_plot
