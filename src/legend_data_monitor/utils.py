@@ -822,9 +822,10 @@ def get_all_plot_parameters(subsystem: str, config: dict):
             # check if we have to load individual QC and classifiers
             if config["subsystems"][subsystem][plot].get("qc_flags") is True:
                 all_parameters.extend(is_entries)
-                all_parameters.extend(is_entries_evt)
             if config["subsystems"][subsystem][plot].get("qc_classifiers") is True:
                 all_parameters.extend(is_classifiers)
+            if parameters in ('geds/quality/is_not_bb_like/is_delayed_discharge', 'geds/quality/is_bb_like'):
+                all_parameters.extend(is_entries_evt)
 
     return all_parameters
 
