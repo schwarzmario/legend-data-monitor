@@ -8,6 +8,7 @@ import smtplib
 import sys
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
+from collections import defaultdict
 from email.mime.text import MIMEText
 
 import h5py
@@ -17,6 +18,8 @@ import yaml
 from legendmeta import JsonDB
 from lgdo import lh5
 from pandas import DataFrame
+
+from legendmeta import LegendMetadata
 
 # -------------------------------------------------------------------------
 
@@ -491,7 +494,7 @@ def check_plot_settings(conf: dict) -> bool:
             # check if all necessary fields for param settings were provided
             for field in options:
                 # when plot_structure is summary or you simply want to load QCs, plot_style is not needed...
-                if plot_settings["parameters"] in ("exposure", "quality_cuts"):
+                if plot_settings["parameters"] in ("exposure", "quality_cuts", "geds/quality/is_not_bb_like/is_delayed_discharge", "geds/quality/is_bb_like"):
                     continue
 
                 # ...otherwise, it is required
@@ -506,6 +509,7 @@ def check_plot_settings(conf: dict) -> bool:
                             ",".join(options[field])
                         )
                     )
+                
                     return False
 
                 # check if the provided option is valid
@@ -536,7 +540,7 @@ def check_plot_settings(conf: dict) -> bool:
                 return False
 
             # ToDo: neater way to skip the whole loop but still do special checks; break? ugly...
-            if plot_settings["parameters"] in ("exposure", "quality_cuts"):
+            if plot_settings["parameters"] in ("exposure", "quality_cuts", "geds/quality/is_not_bb_like/is_delayed_discharge", "geds/quality/is_bb_like"):
                 continue
 
             # other non-exposure checks
@@ -737,53 +741,59 @@ def get_run_name(config: dict, user_time_range: dict) -> str:
 
     return run_list[0]
 
+def load_tier_config(path: str, version: str, tier_name: str):
+    """
+    Loads tier configuration (YAML or JSON) for the given tier name.
+    Searches through possible directory structures and file patterns.
+    """
+    possible_dirs = [f"tier/{tier_name}", f"tier_{tier_name}"]
+    file_patterns = [f"*-ICPC-{tier_name}_config.yaml", f"*-ICPC-{tier_name}_config.json"]
+
+    config_data = None
+    for subdir in possible_dirs:
+        for pattern in file_patterns:
+            filepath_pattern = os.path.join(path, version, "inputs/dataprod/config", subdir, pattern)
+            files = glob.glob(filepath_pattern)
+            if files:
+                filepath = files[0]
+                with open(filepath) as file:
+                    if filepath.endswith(".yaml"):
+                        config_data = yaml.load(file, Loader=yaml.CLoader)
+                    elif filepath.endswith(".json"):
+                        config_data = json.load(file)
+                break
+        if config_data:
+            break
+
+    if not config_data:
+        logger.error(
+            f"No matching config files found for '{tier_name}' "
+            f"in either 'tier/{tier_name}' or 'tier_{tier_name}'."
+        )
+        sys.exit()
+
+    return config_data
+
 
 def get_all_plot_parameters(subsystem: str, config: dict):
     """Get list of all parameters needed for all plots for given subsystem."""
     version = config["dataset"]["version"]
     path = config["dataset"]["path"]
     # load hit QC and classifier flags
-    possible_dirs = ["tier/hit", "tier_hit"]
-    file_patterns = ["*-ICPC-hit_config.yaml", "*-ICPC-hit_config.json"]
-    hit_config = None
-    for subdir in possible_dirs:
-        for pattern in file_patterns:
-            filepath_pattern = os.path.join(
-                path, version, "inputs/dataprod/config", subdir, pattern
-            )
-            files = glob.glob(filepath_pattern)
-            if files:
-                filepath = files[0]
-                with open(filepath) as file:
-                    if filepath.endswith(".yaml"):
-                        hit_config = yaml.load(file, Loader=yaml.CLoader)
-                    elif filepath.endswith(".json"):
-                        hit_config = json.load(file)
-                break
-        if hit_config:
-            break
-    if not hit_config:
-        logger.error(
-            "No matching config files found in either 'tier/hit' or 'tier_hit'."
-        )
-        sys.exit()
-
-    is_entries = [
-        entry
-        for entry in hit_config["outputs"]
-        if entry.startswith("is_") and not entry.endswith("_classifier")
-    ]
-    is_classifiers = [
-        entry
-        for entry in hit_config["outputs"]
-        if entry.startswith("is_") and entry.endswith("_classifier")
-    ]
+    hit_config = load_tier_config(path, version, "hit")
+    is_entries = [entry for entry in hit_config["outputs"]
+                  if entry.startswith("is_") and not entry.endswith("_classifier")]
+    is_classifiers = [entry for entry in hit_config["outputs"]
+                      if entry.startswith("is_") and entry.endswith("_classifier")]
+    
+    # only QC present in evt tier; no classifiers
+    is_entries_evt = ['geds/quality/is_not_bb_like/is_delayed_discharge', 'geds/quality/is_bb_like']
 
     all_parameters = []
     if subsystem in config["subsystems"]:
         for plot in config["subsystems"][subsystem]:
             parameters = config["subsystems"][subsystem][plot]["parameters"]
-            if parameters not in ("quality_cuts"):
+            if parameters not in ("quality_cuts", 'geds/quality/is_not_bb_like/is_delayed_discharge', 'geds/quality/is_bb_like'):
                 if isinstance(parameters, str):
                     all_parameters.append(parameters)
                 else:
@@ -814,6 +824,8 @@ def get_all_plot_parameters(subsystem: str, config: dict):
                 all_parameters.extend(is_entries)
             if config["subsystems"][subsystem][plot].get("qc_classifiers") is True:
                 all_parameters.extend(is_classifiers)
+            if parameters in ('geds/quality/is_not_bb_like/is_delayed_discharge', 'geds/quality/is_bb_like'):
+                all_parameters.extend(is_entries_evt)
 
     return all_parameters
 
@@ -1717,3 +1729,58 @@ def deep_get(d, keys, default=None):
 def none_to_nan(data: list):
     """Convert None elements into nan values for an input list."""
     return [np.nan if v is None else v for v in data]
+
+
+def build_detector_info(metadata_path, start_key=None):
+    """
+    Build detector information from LEGEND metadata.
+
+    Parameters
+    ----------
+    metadata_path : str
+        Path to the metadata file.
+    start_key : optional
+        Starting key for channelmap selection.
+
+    Returns
+    -------
+    dict
+        Dictionary with two main entries:
+        - "detectors": mapping from detector name to different infos
+            - daq_rawid : int
+            - channel_str : str (e.g. "ch1234")
+            - string : int
+            - position : int
+            - processable : bool
+        - "str_chns": mapping from string to a list of detector names
+    """
+    lmeta = LegendMetadata(metadata_path)
+    chmap = lmeta.channelmap(start_key) if start_key else lmeta.channelmap()
+
+    detectors = {}
+    str_chns = defaultdict(list)
+
+    for det, info in chmap.items():
+        if info["system"] != "geds" or info["name"] != det:
+            continue
+
+        rawid = info["daq"]["rawid"]
+        ch_str = f"ch{rawid}"
+        string = int(info["location"]["string"])
+        position = info["location"]["position"]
+        processable = info.get("analysis", {}).get("processable", False)
+
+        # store detector info
+        detectors[det] = {
+            "daq_rawid": rawid,
+            "channel_str": ch_str,
+            "string": string,
+            "position": position,
+            "processable": processable,
+        }
+
+        # fill string 
+        if processable:
+            str_chns[string].append(det)
+
+    return {"detectors": detectors, "str_chns": dict(str_chns)}

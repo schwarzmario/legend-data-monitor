@@ -135,8 +135,10 @@ class Subsystem:
         my_params = param_tiers[param_tiers["param"].isin(params_for_dataloader)]
         dsp_params = my_params[my_params["tier"] == "dsp"]["param"].tolist()
         hit_params = my_params[my_params["tier"] == "hit"]["param"].tolist()
+        evt_params = my_params[my_params["tier"] == "evt"]["param"].tolist()
         utils.logger.debug("dsp/psp parameters: %s", dsp_params)
         utils.logger.debug("hit/pht parameters: %s", hit_params)
+        utils.logger.debug("evt/pet parameters: %s", evt_params)
 
         # find parameters that are not in the YAML
         missing_params = [
@@ -150,6 +152,7 @@ class Subsystem:
 
         dl_dsp = None
         dl_hit = None
+        dl_evt = None
         if dsp_params != []:
             dlconfig_dsp, dbconfig_dsp = self.construct_dataloader_configs(
                 param_tiers, dsp_params, "dsp"
@@ -160,6 +163,11 @@ class Subsystem:
                 param_tiers, hit_params, "hit"
             )
             dl_hit = DataLoader(dlconfig_hit, dbconfig_hit)
+        if evt_params != []:
+            dlconfig_evt, dbconfig_evt = self.construct_dataloader_configs(
+                param_tiers, evt_params, "evt"
+            )
+            dl_evt = DataLoader(dlconfig_evt, dbconfig_evt)  
 
         # -------------------------------------------------------------------------
         # Set up query
@@ -204,29 +212,38 @@ class Subsystem:
         if hit_params != []:
             dl_hit.set_files(query)
             dl_hit.set_output(fmt="pd.DataFrame", columns=hit_params)
+        if evt_params != []:
+            # from "geds/quality/is_X" to "is_X"
+            elems = evt_params[0].split("/")
+            evt_params = [elems[-1]]
+            
+            dl_evt.set_files(query)
+            dl_evt.set_output(fmt="pd.DataFrame", columns=evt_params)
 
         now = datetime.now()
 
         # --- create self.data object
         dsp_data = None
         hit_data = None
+        evt_data = None
         if dsp_params != []:
             dsp_data = dl_dsp.load()
         if hit_params != []:
             hit_data = dl_hit.load()
+        if evt_params != []:
+            evt_data = dl_evt.load()
 
-        if dsp_data is None and hit_data is None:
+        valid_data = [df for df in [dsp_data, hit_data, evt_data] if df is not None]
+        if not valid_data:
             utils.logger.error(
-                "\033[91mdsp_data and hit_data are equal to None. Exit here.\033[0m"
+                "\033[91mdsp_data, hit_data, evt_data are all None. Exit here.\033[0m"
             )
             sys.exit()
-        elif dsp_data is None:
-            self.data = hit_data
-        elif hit_data is None:
-            self.data = dsp_data
+        elif len(valid_data) == 1:
+            self.data = valid_data[0]
         else:
-            self.data = pd.concat([dsp_data, hit_data], axis=1)
-
+            self.data = pd.concat(valid_data, axis=1)
+        
         utils.logger.info(f"Total time to load data: {(datetime.now() - now)}")
 
         # -------------------------------------------------------------------------
@@ -356,7 +373,7 @@ class Subsystem:
                     params,
                 )
                 return
-            if param == "quality_cuts":
+            if param in ["quality_cuts", "geds/quality/is_not_bb_like/is_delayed_discharge", "geds/quality/is_bb_like"]:
                 utils.logger.warning(
                     "\033[93m'%s' does not require the ratio/diff wrt the AUX channel. Skip this step.\033[0m",
                     params,
@@ -785,14 +802,27 @@ class Subsystem:
         """
         tiers, _ = utils.get_tiers_pars_folders(os.path.join(self.path, self.version))
         data_dir = os.path.join(self.path, self.version, "generated", "tier")
-        tier_folder_part = tiers[1] if tier_key == "dsp" else tiers[3]
-        tier_folder = tiers[0] if tier_key == "dsp" else tiers[2]
+        
+        if tier_key == "dsp":
+            tier_folder = tiers[0]
+            tier_folder_part = tiers[1] 
+        if tier_key == "hit":
+            tier_folder = tiers[2]
+            tier_folder_part = tiers[3] 
+        if tier_key == "evt":
+            tier_folder = tiers[5]
+            tier_folder_part = tiers[6]
         tier_key_new = tier_key
 
         if self.partition:
             # check if the psp/pht folder exists (ie is not empty)
             if os.path.isdir(tier_folder_part) and os.listdir(tier_folder_part):
-                tier_key_new = "psp" if tier_key == "dsp" else "pht"
+                if tier_key == "dsp":
+                    tier_key_new = "psp"
+                if tier_key == "hit":
+                    tier_key_new = "pht"
+                if tier_key == "evt":
+                    tier_key_new = "pet"
                 param_tiers["tier"] = param_tiers["tier"].replace(
                     tier_key, tier_key_new
                 )
@@ -860,9 +890,16 @@ class Subsystem:
                 + tier
                 + ".lh5"
             )
+            
             dict_dbconfig["table_format"][tier] = "ch{" + ch_format + "}/"
             if tier == "pht":
                 dict_dbconfig["table_format"][tier] += "hit"
+            elif tier in ["evt","pet"]:
+                elems = list(tier_params["param"])[0].split("/")
+                core = elems[:-1]
+                flag = "/".join(core)
+                dict_dbconfig["table_format"][tier] = f"evt/{flag}/"
+                tier_params["param"] = elems[-1]
             elif tier == "psp":
                 dict_dbconfig["table_format"][tier] += "dsp"
             else:

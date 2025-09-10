@@ -59,13 +59,12 @@ The structure will look like:
             │                │   ├── l200-<period>-<run>-phy-geds-res_60min.hdf
             │                │   ├── l200-<period>-<run>-phy-slow_control.hdf
             │                │   └── mtg/
-            │                │       └── <parameter>/
-            │                │           ├── l200-<period>-phy-<parameter>.{bak,dat,dir}
-            │                │           └── <pdf>/
-            │                │               ├── st1/
-            │                │               ├── st2/
-            │                │               ├── st3/
-            │                │               └── ...
+            │                │      ├── l200-<period>-<run>-phy-monitoring.{bak,dat,dir}
+            │                │      └── <pdf>/
+            │                │         ├── st1/
+            │                │         ├── st2/
+            │                │         ├── st3/
+            │                │         └── ...
             │                └── mtg/
             │                    ├── l200-<period>-phy-monitoring.{bak,dat,dir}
             │                    └── <pdf>/

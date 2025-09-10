@@ -155,9 +155,9 @@ def evaluate_psd_performance(
     return results
 
 
-def update_psd_evaluation_in_memory(data: dict, det_name: str, value: bool | float):
-    """Update the PSD entry in memory dict, where value can be bool or nan if not available."""
-    data.setdefault(det_name, {}).setdefault("cal", {})["PSD"] = value
+def update_psd_evaluation_in_memory(data: dict, det_name: str, data_type: str, key: str, value: bool | float):
+    """Update the key entry in memory dict, where value can be bool or nan if not available; data_type is either 'cal' or 'phy'."""
+    data.setdefault(det_name, {}).setdefault(data_type, {})[key] = value
 
 
 def evaluate_psd_usability_and_plot(
@@ -293,6 +293,8 @@ def evaluate_psd_usability_and_plot(
 
     fig.suptitle(det_name, fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    output_dir = os.path.join(output_dir, "mtg")
     if save_pdf:
         pdf_folder = os.path.join(output_dir, "pdf", f"st{location[0]}")
         os.makedirs(pdf_folder, exist_ok=True)
@@ -309,7 +311,7 @@ def evaluate_psd_usability_and_plot(
     with shelve.open(
         os.path.join(
             output_dir,
-            f"l200-{period}-phy-monitoring",
+            f"l200-{period}-cal-monitoring",
         ),
         "c",
         protocol=pickle.HIGHEST_PROTOCOL,
@@ -321,7 +323,7 @@ def evaluate_psd_usability_and_plot(
     plt.close()
 
     # supdate psd status
-    update_psd_evaluation_in_memory(psd_data, det_name, eval_result["status"])
+    update_psd_evaluation_in_memory(psd_data, det_name, 'cal', 'PSD', eval_result["status"])
 
 
 def check_psd(
@@ -336,26 +338,49 @@ def check_psd(
             break
     if found is False:
         utils.logger.debug(f"No valid folder {cal_path} found. Exiting.")
-        exit()
+        return 
+
+    # create the folder and parents if missing - for the moment, we store it under the 'phy' folder
+    output_dir = os.path.join(output_dir, period)
+    output_dir_run = os.path.join(output_dir, current_run, "mtg")
+    os.makedirs(output_dir_run, exist_ok=True)
+
+    # Load existing data once (or start empty)
+    usability_map_file = os.path.join(
+        output_dir_run, f"l200-{period}-{current_run}-qcp_summary.yaml"
+    )
+
+    if os.path.exists(usability_map_file):
+        with open(usability_map_file) as f:
+            psd_data = yaml.safe_load(f) or {}
+    else:
+        psd_data = {}
+
+    # don't run any check if there are no runs
+    cal_runs = os.listdir(cal_path)
+    if len(cal_runs) == 0:
+        utils.logger.debug(f"No available calibration runs to inspect. Exiting.")
+        return 
 
     pars_files_list = sorted(glob.glob(f"{cal_path}/*/*.yaml"))
     if not pars_files_list:
         pars_files_list = sorted(glob.glob(f"{cal_path}/*/*.json"))
 
-    metadata_path = os.path.join(auto_dir_path, "inputs")
-    lmeta = LegendMetadata(metadata_path)
-    chmap = lmeta.channelmap()
-    detectors_name = [det for det, info in chmap.items() if info["system"] == "geds"]
-    detectors_list = [
-        f"ch{chmap[det]['daq']['rawid']}"
-        for det in detectors_name
-        if chmap[det]["name"] == det
-    ]
-    locations_list = [
-        (chmap[det]["location"]["position"], chmap[det]["location"]["string"])
-        for det in detectors_name
-        if chmap[det]["name"] == det
-    ]
+    start_key = pars_files_list[0].split('-')[-2]
+    det_info = utils.build_detector_info(os.path.join(auto_dir_path, "inputs"), start_key=start_key)
+    detectors_name = list(det_info["detectors"].keys())
+    detectors_list = [det_info["detectors"][d]["channel_str"] for d in detectors_name]
+    locations_list = [(det_info["detectors"][d]["position"], det_info["detectors"][d]["string"]) for d in detectors_name]
+    
+    if len(cal_runs) == 1:
+        utils.logger.debug(f"Only one available calibration run. Save all entries as None and exit.")
+        for det_name in detectors_name:
+            update_psd_evaluation_in_memory(psd_data, det_name, 'cal', 'PSD', None)
+        
+        with open(usability_map_file, "w") as f:
+            yaml.dump(psd_data, f, sort_keys=False)
+        
+        return 
 
     # retrieve all dets info
     cal_runs = sorted(os.listdir(cal_path))
@@ -365,21 +390,6 @@ def check_psd(
     if cal_psd_info is None:
         utils.logger.debug("...no data are available at the moment")
         return
-
-    # create the folder and parents if missing - for the moment, we store it under the 'phy' folder
-    output_dir = os.path.join(output_dir, period, current_run)
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Load existing data once (or start empty)
-    usability_map_file = os.path.join(
-        output_dir, f"l200-{period}-{current_run}-summary.yaml"
-    )
-
-    if os.path.exists(usability_map_file):
-        with open(usability_map_file) as f:
-            psd_data = yaml.safe_load(f) or {}
-    else:
-        psd_data = {}
 
     # inspect one single det: plot+saving
     for idx, det_name in enumerate(detectors_name):
