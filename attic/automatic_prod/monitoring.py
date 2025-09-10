@@ -96,6 +96,24 @@ def main():
         help="True if you want to save pdf files too; default: False.",
     )
 
+    func4_parser = subparsers.add_parser(
+        "check_calib",
+        help="Check calibration stability in calibration runs and create monitoring summary file.",
+    )
+    func4_parser.add_argument(
+        "--public_data",
+        help="Path to tmp-auto public data files (eg /data2/public/prodenv/prod-blind/tmp-auto).",
+        default="/data2/public/prodenv/prod-blind/ref-v1.0.1",
+    )
+    func4_parser.add_argument("--output", help="Path to output folder.")
+    func4_parser.add_argument("--p", help="Period to inspect.")
+    func4_parser.add_argument("--current_run", type=str, help="Run under inspection.")
+    func4_parser.add_argument(
+        "--pdf",
+        default=False,
+        help="True if you want to save pdf files too; default: False.",
+    )
+
     args = parser.parse_args()
 
     if args.command == "summary_files":
@@ -132,6 +150,17 @@ def main():
             partition,
             quadratic,
             zoom,
+        )
+
+    elif args.command == "check_calib":
+        auto_dir_path = args.public_data
+        output_folder = args.output
+        period = args.p
+        save_pdf = False if args.pdf in [False, "False"] else True
+        current_run = args.current_run
+
+        legend_data_monitor.calibration.check_calibration(
+            auto_dir_path, output_folder, period, current_run, save_pdf
         )
 
     elif args.command == "calib_psd":
