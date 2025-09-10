@@ -155,7 +155,9 @@ def evaluate_psd_performance(
     return results
 
 
-def update_psd_evaluation_in_memory(data: dict, det_name: str, data_type: str, key: str, value: bool | float):
+def update_psd_evaluation_in_memory(
+    data: dict, det_name: str, data_type: str, key: str, value: bool | float
+):
     """Update the key entry in memory dict, where value can be bool or nan if not available; data_type is either 'cal' or 'phy'."""
     data.setdefault(det_name, {}).setdefault(data_type, {})[key] = value
 
@@ -323,7 +325,9 @@ def evaluate_psd_usability_and_plot(
     plt.close()
 
     # supdate psd status
-    update_psd_evaluation_in_memory(psd_data, det_name, 'cal', 'PSD', eval_result["status"])
+    update_psd_evaluation_in_memory(
+        psd_data, det_name, "cal", "PSD", eval_result["status"]
+    )
 
 
 def check_psd(
@@ -338,7 +342,7 @@ def check_psd(
             break
     if found is False:
         utils.logger.debug(f"No valid folder {cal_path} found. Exiting.")
-        return 
+        return
 
     # create the folder and parents if missing - for the moment, we store it under the 'phy' folder
     output_dir = os.path.join(output_dir, period)
@@ -360,27 +364,34 @@ def check_psd(
     cal_runs = os.listdir(cal_path)
     if len(cal_runs) == 0:
         utils.logger.debug(f"No available calibration runs to inspect. Exiting.")
-        return 
+        return
 
     pars_files_list = sorted(glob.glob(f"{cal_path}/*/*.yaml"))
     if not pars_files_list:
         pars_files_list = sorted(glob.glob(f"{cal_path}/*/*.json"))
 
-    start_key = pars_files_list[0].split('-')[-2]
-    det_info = utils.build_detector_info(os.path.join(auto_dir_path, "inputs"), start_key=start_key)
+    start_key = pars_files_list[0].split("-")[-2]
+    det_info = utils.build_detector_info(
+        os.path.join(auto_dir_path, "inputs"), start_key=start_key
+    )
     detectors_name = list(det_info["detectors"].keys())
     detectors_list = [det_info["detectors"][d]["channel_str"] for d in detectors_name]
-    locations_list = [(det_info["detectors"][d]["position"], det_info["detectors"][d]["string"]) for d in detectors_name]
-    
+    locations_list = [
+        (det_info["detectors"][d]["position"], det_info["detectors"][d]["string"])
+        for d in detectors_name
+    ]
+
     if len(cal_runs) == 1:
-        utils.logger.debug(f"Only one available calibration run. Save all entries as None and exit.")
+        utils.logger.debug(
+            f"Only one available calibration run. Save all entries as None and exit."
+        )
         for det_name in detectors_name:
-            update_psd_evaluation_in_memory(psd_data, det_name, 'cal', 'PSD', None)
-        
+            update_psd_evaluation_in_memory(psd_data, det_name, "cal", "PSD", None)
+
         with open(usability_map_file, "w") as f:
             yaml.dump(psd_data, f, sort_keys=False)
-        
-        return 
+
+        return
 
     # retrieve all dets info
     cal_runs = sorted(os.listdir(cal_path))
