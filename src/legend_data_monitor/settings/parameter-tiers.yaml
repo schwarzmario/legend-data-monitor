@@ -93,3 +93,5 @@ is_negative_polarity_candidate: hit
 is_empty_candidate: hit
 is_positive_polarity_candidate: hit
 is_highly_positive_polarity_candidate: hit
+geds/quality/is_bb_like: evt
+geds/quality/is_not_bb_like/is_delayed_discharge: evt
