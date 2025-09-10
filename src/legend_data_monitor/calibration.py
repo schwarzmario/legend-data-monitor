@@ -337,12 +337,13 @@ def check_psd(
         return 
 
     # create the folder and parents if missing - for the moment, we store it under the 'phy' folder
-    output_dir = os.path.join(output_dir, period, current_run)
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = os.path.join(output_dir, period)
+    output_dir_run = os.path.join(output_dir, current_run, "mtg")
+    os.makedirs(output_dir_run, exist_ok=True)
 
     # Load existing data once (or start empty)
     usability_map_file = os.path.join(
-        output_dir, f"l200-{period}-{current_run}-qcp_summary.yaml"
+        output_dir_run, f"l200-{period}-{current_run}-qcp_summary.yaml"
     )
 
     if os.path.exists(usability_map_file):

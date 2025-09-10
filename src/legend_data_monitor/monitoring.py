@@ -72,12 +72,11 @@ def qc_average(auto_dir_path: str, output_folder: str, det_info: dict, period: s
         period,
         run,
         "mtg",
-        "QC",
     )
     os.makedirs(end_folder, exist_ok=True)
     shelve_path = os.path.join(
         end_folder,
-        f"l200-{period}-phy-QC",
+        f"l200-{period}-{run}-phy-monitoring",
     )
 
     with shelve.open(shelve_path, "c", protocol=pickle.HIGHEST_PROTOCOL) as shelf, pd.HDFStore(my_file, "r") as store:
@@ -150,11 +149,11 @@ def qc_average(auto_dir_path: str, output_folder: str, det_info: dict, period: s
             if save_pdf:
                 pdf_dir = os.path.join(end_folder, "pdf")
                 os.makedirs(pdf_dir, exist_ok=True)
-                pdf_name = os.path.join(pdf_dir, f"{period}_{par}_avg.pdf")
+                pdf_name = os.path.join(pdf_dir, f"{period}_{run}_{par}_avg.pdf")
                 fig.savefig(pdf_name)
 
             # serialize+save plot 
-            shelf[f"{period}_{par}_avg"] = pickle.dumps(fig)
+            shelf[f"{period}_{run}_{par}_avg"] = pickle.dumps(fig)
             plt.close(fig)
 
 
@@ -190,12 +189,11 @@ def qc_time_series(auto_dir_path: str, output_folder: str, det_info: dict, perio
         period,
         run,
         "mtg",
-        "QC",
     )
     os.makedirs(end_folder, exist_ok=True)
     shelve_path = os.path.join(
         end_folder,
-        f"l200-{period}-phy-QC",
+        f"l200-{period}-{run}-phy-monitoring",
     )
 
     color_cycle = itertools.cycle(plt.cm.tab20.colors)
@@ -243,17 +241,17 @@ def qc_time_series(auto_dir_path: str, output_folder: str, det_info: dict, perio
                 ax.grid(False)
                 ax.set_ylabel(f'{period} {run} - 1h {par} rate (mHz)')
                 fig.suptitle(f'{period} {run} - String: {string}')
-                ax.legend(loc='bottom left')
+                ax.legend(loc='lower left')
                 plt.tight_layout()
                 
                 if save_pdf:
                     pdf_dir = os.path.join(end_folder, "pdf", f"st{string}")
                     os.makedirs(pdf_dir, exist_ok=True)
-                    pdf_name = os.path.join(pdf_dir, f"{period}_string{string}_{par}_rate.pdf")
+                    pdf_name = os.path.join(pdf_dir, f"{period}_{run}_string{string}_{par}_rate.pdf")
                     fig.savefig(pdf_name)
 
                 # serialize+save plot 
-                shelf[f"{period}_string{string}_{par}_rate"] = pickle.dumps(fig)
+                shelf[f"{period}_{run}_string{string}_{par}_rate"] = pickle.dumps(fig)
                 plt.close(fig)
 
                 
@@ -1591,12 +1589,11 @@ def plot_time_series(
                 period,
                 current_run,
                 "mtg",
-                inspected_parameter,
             )
             os.makedirs(end_folder, exist_ok=True)
             shelve_path = os.path.join(
                 end_folder,
-                f"l200-{period}-phy-{inspected_parameter}",
+                f"l200-{period}-{current_run}-phy-monitoring",
             )
             utils.logger.debug(
                 f"...inspecting {inspected_parameter} over {current_run}"
@@ -1775,14 +1772,14 @@ def plot_time_series(
     
                             pdf_name = os.path.join(
                                 mgt_folder,
-                                f"{period}_string{string}_pos{pos}_{channel_name}_{inspected_parameter}.pdf",
+                                f"{period}_{current_run}_string{string}_pos{pos}_{channel_name}_{inspected_parameter}.pdf",
                             )
                             plt.savefig(pdf_name)
     
                         # serialize+save the plot
                         serialized_plot = pickle.dumps(plt.gcf())
                         shelf[
-                            f'{period}_string{string}_pos{pos}_{channel_name}_{inspected_parameter}'
+                            f'{period}_{current_run}_string{string}_pos{pos}_{channel_name}_{inspected_parameter}'
                         ] = serialized_plot
                         plt.close(fig)
 
