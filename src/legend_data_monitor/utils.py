@@ -752,8 +752,16 @@ def get_run_name(config: dict, user_time_range: dict) -> str:
 
 def load_tier_config(path: str, version: str, tier_name: str):
     """
-    Loads tier configuration (YAML or JSON) for the given tier name.
-    Searches through possible directory structures and file patterns.
+    Load tier configuration (YAML or JSON) for the given tier name, and search through possible directory structures and file patterns.
+
+    Parameters
+    ----------
+    path : str
+        Path to the processing environment, e.g. '/data2/public/prodenv/prod-blind'.
+    version : str
+        Version of data under inspection, e.g. 'tmp-auto'.
+    tier_name : str
+        Name of the tier under inspection, e.g. 'hit'.
     """
     possible_dirs = [f"tier/{tier_name}", f"tier_{tier_name}"]
     file_patterns = [
@@ -1704,6 +1712,33 @@ def build_runinfo(path: str, version: str, output: str):
 # -------------------------------------------------------------------------
 # Helper functions
 # -------------------------------------------------------------------------
+def load_yaml_or_default(path: str, detectors: dict) -> dict:
+    """Load YAML if it exists, else return a default dict."""
+
+    def default_output(detectors: dict) -> dict:
+        return {
+            ged: {
+                "cal": {
+                    "npeak": None,
+                    "fwhm_ok": None,
+                    "FEP_gain_stab": None,
+                    "const_stab": None,
+                    "PSD": None,
+                },
+                "phy": {
+                    "pulser_stab": None,
+                    "baseln_stab": None,
+                    "baseln_spike": None,
+                },
+            }
+            for ged in detectors
+        }
+
+    if os.path.exists(path):
+        with open(path) as f:
+            return yaml.load(f, Loader=yaml.CLoader) or default_output(detectors)
+
+    return default_output(detectors)
 
 
 def read_json_or_yaml(file_path: str):
@@ -1802,6 +1837,7 @@ def build_detector_info(metadata_path, start_key=None):
 
         # store detector info
         detectors[det] = {
+            "name": det,
             "daq_rawid": rawid,
             "channel_str": ch_str,
             "string": string,
