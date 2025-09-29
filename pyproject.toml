@@ -38,7 +38,8 @@ requires-python = ">=3.9"
 dependencies = [
     "pygama",
     "pylegendmeta >=0.9",
-    "seaborn"
+    "seaborn",
+    "tabulate"
 ]
 dynamic = ["version"]
 
